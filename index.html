@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Museu do Flamengo</title>
+  <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
+  <script
+    src="https://unpkg.com/aframe-particle-system-component@1.1.3/dist/aframe-particle-system-component.min.js"></script>
+  <script src="salas.js"></script>
+</head>
+
+<body>
+  <a-scene>
+    <!-- Luzes centralizadas: 1 ambient + 1 directional (barato e suficiente na maioria dos casos) -->
+    <a-entity light="type: ambient; intensity: 0.6; color: #ffffff"></a-entity>
+    <a-entity light="type: directional; intensity: 0.6; castShadow: false" position="1 4 1"></a-entity>
+
+    <a-assets>
+      <a-asset-item id="br-trofeu" src="trofeu_brasileirao.glb"></a-asset-item>
+      <a-asset-item id="br-copadobrasil" src="copa_do_brasil_2022.glb"></a-asset-item>
+      <a-asset-item id="br-libertadores" src="copa_libertadores.glb"></a-asset-item>
+      <a-asset-item id="spotlight" src="spotlight.glb"></a-asset-item>
+    </a-assets>
+
+    <!-- Câmera do visitante (adicionar id para manipular) -->
+    <a-entity id="visitante" position="0 1.6 0" rotation="0 0 0">
+      <a-camera wasd-controls="acceleration: 100" look-controls="true"></a-camera>
+    </a-entity>
+
+    <!-- Chão geral que conecta as salas -->
+    <a-plane position="0 0 0" rotation="-90 0 0" width="200" height="200" color="#888888"></a-plane>
+
+    <!-- Faixa de entrada -->
+    <a-box position="0 2 10" depth="0.2" height="5" width="5" color="#222222"></a-box>
+    <a-image src="escudo_flamengo.png" position="0 2 10.11" width="3" height="3"> </a-image>
+    <a-text value="MUSEU DO FLAMENGO" position="0 4 10.11" align="center" width="6" font="mozillavr" color="#C52613">
+    </a-text>
+
+    <!-- Placa de caminhos (fundo) -->
+    <a-box position="0 2 0" depth="0.2" height="4" width="10" color="#222222"></a-box>
+
+    <!-- Placa superior: Libertadores -->
+    <a-text value="Libertadores" position="0 3.2 0.12" align="center" width="6" font="mozillavr" color="#C52613">
+    </a-text>
+
+    <!-- Placa esquerda: Brasileirão -->
+    <a-text value="Brasileirao" position="-3 2 0.12" align="center" width="6" font="mozillavr" color="#C52613">
+    </a-text>
+
+    <!-- Placa direita: Copa do Brasil -->
+    <a-text value="Copa do Brasil" position="3 2 0.12" align="center" width="6" font="mozillavr" color="#C52613">
+    </a-text>
+
+    <!-- Sala do Libertadores (no centro) -->
+    <a-entity position="0 0 -15" sala-libertadores celebracao-2025></a-entity>
+
+    <!-- Sala da Copa do Brasil (à direita) -->
+    <a-entity position="15 0 0" rotation="0 -90 0" sala-copadobrasil></a-entity>
+
+    <!-- Sala do Brasileirão (à esquerda) -->
+    <a-entity position="-15 0 0" rotation="0 90 0" sala-brasileirao></a-entity>
+
+  </a-scene>
+</body>
+
+</html>
