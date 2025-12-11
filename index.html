@@ -6,15 +6,170 @@
   <title>Museu do Flamengo</title>
   <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
   <script
-    src="https://unpkg.com/aframe-particle-system-component@1.1.3/dist/aframe-particle-system-component.min.js"></script>
+    src="https://cdn.jsdelivr.net/gh/IdeaSpaceVR/aframe-particle-system-component@3.0.0/dist/aframe-particle-system-component.min.js"></script>
   <script src="salas.js"></script>
+  <script>
+    AFRAME.registerComponent('camera-tour', {
+      schema: {
+        target: { type: 'selector' },
+        autoStart: { type: 'boolean', default: false },
+        loop: { type: 'boolean', default: false },
+        defaultDuration: { type: 'int', default: 3000 }
+      },
+
+      init: function () {
+        this.isPlaying = false;
+        this.currentIndex = 0;
+        this._raf = null;
+        this.sceneEl = this.el.sceneEl;
+
+        // Garante que a cena carregou antes de buscar os pontos
+        if (!this.sceneEl.hasLoaded) {
+          this.sceneEl.addEventListener('loaded', () => this._finishInit());
+        } else {
+          this._finishInit();
+        }
+      },
+
+      _finishInit: function () {
+        this.cameraEl = this.data.target || this.el;
+
+        // Pega todos os pontos
+        this.points = Array.from(this.el.querySelectorAll('.tourpoint'));
+
+        if (!this.points.length) {
+          console.warn('Nenhum ponto de tour encontrado!');
+          return;
+        }
+
+        // Prepara os dados dos pontos (waypoints)
+        this.waypoints = this.points.map(p => {
+          const posAttr = p.getAttribute('position');
+          const rotAttr = p.getAttribute('rotation');
+          const duration = parseInt(p.getAttribute('data-duration')) || this.data.defaultDuration;
+
+          return {
+            position: new THREE.Vector3(posAttr.x, posAttr.y, posAttr.z),
+            // Converte graus para radianos para o Quaternion
+            rotationEuler: new THREE.Euler(
+              THREE.MathUtils.degToRad(rotAttr.x),
+              THREE.MathUtils.degToRad(rotAttr.y),
+              THREE.MathUtils.degToRad(rotAttr.z),
+              'XYZ'
+            ),
+            duration: duration
+          };
+        });
+
+        if (this.data.autoStart) {
+          setTimeout(() => this.start(), 100);
+        }
+      },
+
+      start: function () {
+        if (!this.waypoints || !this.waypoints.length) return;
+
+        // Desativa controles manuais para não conflitar
+        this.cameraEl.setAttribute('wasd-controls', 'enabled: false');
+        this.cameraEl.setAttribute('look-controls', 'enabled: false');
+
+        this.currentIndex = 0;
+        this._playStep(this.currentIndex);
+      },
+
+      _playStep: function (index) {
+        this.currentIndex = index;
+        const wp = this.waypoints[index];
+
+        // Posição atual da câmera
+        const fromPos = this.cameraEl.object3D.position.clone();
+        const fromQuat = this.cameraEl.object3D.quaternion.clone();
+
+        // Para onde vai
+        const toPos = wp.position;
+        const toQuat = new THREE.Quaternion().setFromEuler(wp.rotationEuler);
+
+        this._animate(performance.now(), wp.duration, fromPos, fromQuat, toPos, toQuat, index);
+      },
+
+      _animate: function (startTime, duration, fromPos, fromQuat, toPos, toQuat, index) {
+        this.isPlaying = true;
+
+        const loop = (now) => {
+          if (!this.isPlaying) return;
+
+          const elapsed = now - startTime;
+          const t = Math.min(1, elapsed / duration);
+
+          // Easing (suavização)
+          const ease = t < .5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1;
+
+          // Interpolação
+          this.cameraEl.object3D.position.lerpVectors(fromPos, toPos, ease);
+          this.cameraEl.object3D.quaternion.slerpQuaternions(fromQuat, toQuat, ease);
+
+          if (t < 1) {
+            this._raf = requestAnimationFrame(loop);
+          } else {
+            // Chegou no ponto
+            this._finishStep(index);
+          }
+        };
+
+        this._raf = requestAnimationFrame(loop);
+      },
+
+      _finishStep: function (index) {
+        // Próximo passo
+        const nextIndex = (index + 1) % this.waypoints.length;
+
+        // Se não for loop e chegou no fim, para.
+        if (!this.data.loop && nextIndex === 0) {
+          this.isPlaying = false;
+          // Retorna controles (opcional)
+          this.cameraEl.setAttribute('wasd-controls', 'enabled: true');
+          this.cameraEl.setAttribute('look-controls', 'enabled: true');
+          return;
+        }
+
+        this._playStep(nextIndex);
+      }
+    });
+  </script>
 </head>
 
 <body>
-  <a-scene>
-    <!-- Luzes centralizadas: 1 ambient + 1 directional (barato e suficiente na maioria dos casos) -->
-    <a-entity light="type: ambient; intensity: 0.6; color: #ffffff"></a-entity>
-    <a-entity light="type: directional; intensity: 0.6; castShadow: false" position="1 4 1"></a-entity>
+  <a-scene celebracao-anim>
+
+    <a-scene>
+      <a-assets>
+        <audio id="bg-music" src="videoplayback.mp3"></audio>
+      </a-assets>
+
+      <a-entity id="player" sound="src: #bg-music; autoplay: true; loop: true; positional: false">
+      </a-entity>
+    </a-scene>
+
+    <a-entity id="tour-camera" camera position="0 3 15" rotation="0 0 0" wasd-controls look-controls></a-entity>
+
+    <!-- Controller: coloque os tourpoints como filhos -->
+    <a-entity id="tour-controller"
+      camera-tour="target: #tour-camera; autoStart: true; loop: true; defaultDuration: 3000">
+      <!-- Waypoints: posição, rotação (degrees). data-duration em ms opcional por trecho -->
+      <a-entity class="tourpoint" position="0 3 15" rotation="0 0 0" data-duration="1500"></a-entity>
+      <a-entity class="tourpoint" position="2 3 2" rotation="0 90 0" data-duration="4000"></a-entity>
+      <a-entity class="tourpoint" position="-10 3 0" rotation="0 90 0" data-duration="4000"></a-entity>
+      <a-entity class="tourpoint" position="-10 3 0" rotation="0 180 0" data-duration="4000"></a-entity>
+      <a-entity class="tourpoint" position="-18 3 0" rotation="0 180 0" data-duration="4000"></a-entity>
+      <a-entity class="tourpoint" position="-18 3 0" rotation="0 90 0" data-duration="4000"></a-entity>
+      <a-entity class="tourpoint" position="-18 3 0" rotation="0 0 0" data-duration="4000"></a-entity>
+      <a-entity class="tourpoint" position="-10 3 0" rotation="0 0 0" data-duration="4000"></a-entity>
+      <a-entity class="tourpoint" position="15 3 0" rotation="0 0 0" data-duration="4000"></a-entity>
+      <a-entity class="tourpoint" position="15 3 0" rotation="0 -90 0" data-duration="4000"></a-entity>
+      <a-entity class="tourpoint" position="15 3 0" rotation="0 -180 0" data-duration="4000"></a-entity>
+      <a-entity class="tourpoint" position="0 3 -10" rotation="15 0 0" data-duration="10000"></a-entity>
+
+    </a-entity>
 
     <a-assets>
       <a-asset-item id="br-trofeu" src="trofeu_brasileirao.glb"></a-asset-item>
@@ -22,11 +177,6 @@
       <a-asset-item id="br-libertadores" src="copa_libertadores.glb"></a-asset-item>
       <a-asset-item id="spotlight" src="spotlight.glb"></a-asset-item>
     </a-assets>
-
-    <!-- Câmera do visitante (adicionar id para manipular) -->
-    <a-entity id="visitante" position="0 1.6 0" rotation="0 0 0">
-      <a-camera wasd-controls="acceleration: 100" look-controls="true"></a-camera>
-    </a-entity>
 
     <!-- Chão geral que conecta as salas -->
     <a-plane position="0 0 0" rotation="-90 0 0" width="200" height="200" color="#888888"></a-plane>
@@ -53,7 +203,7 @@
     </a-text>
 
     <!-- Sala do Libertadores (no centro) -->
-    <a-entity position="0 0 -15" sala-libertadores celebracao-2025></a-entity>
+    <a-entity position="0 0 -15" sala-libertadores></a-entity>
 
     <!-- Sala da Copa do Brasil (à direita) -->
     <a-entity position="15 0 0" rotation="0 -90 0" sala-copadobrasil></a-entity>

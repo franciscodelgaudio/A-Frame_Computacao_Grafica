@@ -1,3 +1,427 @@
+AFRAME.registerComponent("spot-real", {
+  schema: {
+    color: { default: "#ffffffff" },
+    intensity: { default: 30 },
+    angle: { default: 1 },      // largura do cone (radianos)
+    penumbra: { default: 0.3 },
+    distance: { default: 20 }
+  },
+  init() {
+    const data = this.data;
+
+    const spot = new THREE.SpotLight(
+      new THREE.Color(data.color),
+      data.intensity,
+      data.distance,
+      data.angle,
+      data.penumbra
+    );
+
+    spot.castShadow = true;
+    this.el.object3D.add(spot);
+    this.el.object3D.add(spot.target);
+  }
+});
+
+AFRAME.registerComponent('confetti-fall', {
+  schema: {
+    count: { type: 'int', default: 80 },
+    radius: { type: 'number', default: 1.2 },   // raio onde surgem os confetes
+    height: { type: 'number', default: 2.2 },   // altura do spawn
+    floorY: { type: 'number', default: 0 },
+    colors: { type: 'string', default: '#ff0044,#00ff66,#ffd700,#00aaff,#ff66ff' }
+  },
+
+  init() {
+    const data = this.data;
+    const el = this.el;
+
+    const colorList = data.colors.split(',').map(c => c.trim());
+    this.items = [];
+
+    for (let i = 0; i < data.count; i++) {
+      const c = document.createElement('a-plane');
+
+      c.setAttribute('width', 0.08);
+      c.setAttribute('height', 0.05);
+      c.setAttribute('material', `color: ${colorList[i % colorList.length]}; side: double; transparent: true; shader: flat`);
+
+      // posição inicial
+      const x = (Math.random() - 0.5) * data.radius * 2;
+      const y = Math.random() * data.height + 1;
+      const z = (Math.random() - 0.5) * data.radius * 2;
+
+      c.object3D.position.set(x, y, z);
+
+      el.appendChild(c);
+
+      this.items.push({
+        el: c,
+        vy: -(0.4 + Math.random() * 1.2),   // velocidade vertical
+        rx: Math.random() * Math.PI * 2,
+        rz: Math.random() * Math.PI * 2
+      });
+    }
+  },
+
+  tick(time, delta) {
+    const dt = Math.min(delta, 50) / 1000;
+
+    for (const c of this.items) {
+      const obj = c.el.object3D;
+
+      obj.position.y += c.vy * dt;
+      obj.rotation.x += 1.5 * dt;
+      obj.rotation.z += 1.2 * dt;
+
+      // reinicia ao cair abaixo do chão
+      if (obj.position.y < this.data.floorY) {
+        obj.position.y = this.data.height + 1;
+        obj.position.x = (Math.random() - 0.5) * this.data.radius * 2;
+        obj.position.z = (Math.random() - 0.5) * this.data.radius * 2;
+      }
+    }
+  }
+});
+
+AFRAME.registerComponent('transparent-no-depth', {
+  schema: { doubleSide: { type: 'boolean', default: true }, alphaTest: { type: 'number', default: 0 } },
+
+  init() {
+    // aguardar o mesh estar disponível
+    this.el.addEventListener('object3dset', () => this.fixMaterial());
+    // também tentar imediatamente caso já tenha mesh
+    setTimeout(() => this.fixMaterial(), 0);
+  },
+
+  fixMaterial() {
+    const mesh = this.el.getObject3D('mesh') || this.el.getObject3D('object3D');
+    if (!mesh) return;
+    mesh.traverse(node => {
+      if (node.isMesh && node.material) {
+        // não escrever no depth buffer para não bloquear objetos atrás
+        node.material.depthWrite = false;
+        // deixar transparente (caso não esteja)
+        node.material.transparent = true;
+        // opcional: forçar double side para evitar faces viradas
+        if (this.data.doubleSide) node.material.side = THREE.DoubleSide;
+        // opcional: alphaTest para cortar pixels muito transparentes (ajuste se quiser)
+        if (this.data.alphaTest > 0) node.material.alphaTest = this.data.alphaTest;
+        // atualizar
+        node.material.needsUpdate = true;
+      }
+    });
+  }
+});
+//   schema: {
+//     target: { type: 'selector' }, // camera selector (default: the component's entity if not provided)
+//     autoStart: { type: 'boolean', default: false },
+//     loop: { type: 'boolean', default: false },
+//     defaultDuration: { type: 'int', default: 3000 } // ms
+//   },
+
+//   init: function () {
+//     // state
+//     this.isPlaying = false;
+//     this.currentIndex = 0;
+//     this._raf = null;
+//     this._startTime = null;
+//     this._from = null;
+//     this._to = null;
+//     this._duration = 0;
+//     this._pausedElapsed = 0;
+
+//     // delay init until scene and objects are ready
+//     this.sceneEl = this.el.sceneEl || this.el.closest('a-scene');
+//     if (!this.sceneEl) {
+//       console.warn('[camera-tour] scene not found. Aborting init.');
+//       return;
+//     }
+
+//     // wait for scene loaded (ensures assets and object3D created)
+//     if (!this.sceneEl.hasLoaded) {
+//       this.sceneEl.addEventListener('loaded', () => this._finishInit());
+//     } else {
+//       this._finishInit();
+//     }
+//   },
+
+//   _finishInit: function () {
+//     // resolve camera element (target) as soon as possible
+//     this.cameraEl = this.data.target || this.el;
+
+//     // if target selector given but not yet present, try again when object3dset
+//     if (!this.cameraEl) {
+//       console.warn('[camera-tour] target selector did not resolve, using controller entity as camera target.');
+//       this.cameraEl = this.el;
+//     }
+
+//     // gather points (if none found, log and do nothing)
+//     this.points = Array.from(this.el.querySelectorAll('.tourpoint'));
+//     if (!this.points.length) {
+//       console.warn('[camera-tour] no .tourpoint elements found as children of controller.');
+//     }
+
+//     // build waypoints safely (tolerate missing attrs)
+//     this.waypoints = this.points.map(p => {
+//       const posAttr = p.getAttribute('position') || { x: 0, y: 1.6, z: 0 };
+//       const rotAttr = p.getAttribute('rotation') || { x: 0, y: 0, z: 0 };
+//       const duration = parseInt(p.getAttribute('data-duration')) || this.data.defaultDuration;
+//       return {
+//         position: { x: parseFloat(posAttr.x), y: parseFloat(posAttr.y), z: parseFloat(posAttr.z) },
+//         rotation: { x: parseFloat(rotAttr.x), y: parseFloat(rotAttr.y), z: parseFloat(rotAttr.z) },
+//         duration
+//       };
+//     });
+
+//     // saved controls (may be undefined)
+//     try {
+//       this._savedControls = {
+//         wasd: this.cameraEl.getAttribute('wasd-controls'),
+//         look: this.cameraEl.getAttribute('look-controls')
+//       };
+//     } catch (err) {
+//       this._savedControls = { wasd: null, look: null };
+//     }
+
+//     // if autoStart requested, start after camera object3D is ready
+//     if (this.data.autoStart) {
+//       // ensure camera object3D exists before start
+//       if (this.cameraEl.object3D) {
+//         setTimeout(() => this.start(), 0);
+//       } else {
+//         // wait for camera's object3dset (useful when camera is created later)
+//         this.cameraEl.addEventListener('object3dset', () => {
+//           setTimeout(() => this.start(), 0);
+//         });
+//       }
+//     }
+
+//     // debug helper: allow starting from console
+//     console.info('[camera-tour] initialized. Waypoints:', this.waypoints.length);
+//     this.el.addEventListener('tourstart', () => console.log('[camera-tour] tourstart'));
+//     this.el.addEventListener('tourarrive', e => console.log('[camera-tour] arrived at', e.detail));
+//     this.el.addEventListener('tourstep', e => {/* quiet by default */});
+//   },
+
+//   remove: function () {
+//     this.stop();
+//     if (this._savedControls) {
+//       // restore saved controls (safe set)
+//       if (this._savedControls.wasd !== undefined) {
+//         this.cameraEl.setAttribute('wasd-controls', this._savedControls.wasd);
+//       }
+//       if (this._savedControls.look !== undefined) {
+//         this.cameraEl.setAttribute('look-controls', this._savedControls.look);
+//       }
+//     }
+//   },
+
+//   /* Public API */
+//   start: function () {
+//     if (!this.waypoints || !this.waypoints.length) {
+//       console.warn('[camera-tour] no waypoints to start.');
+//       return;
+//     }
+
+//     // ensure camera object3D exists
+//     if (!this.cameraEl.object3D) {
+//       console.warn('[camera-tour] camera.object3D not ready yet — delaying start.');
+//       this.cameraEl.addEventListener('object3dset', () => this.start(), { once: true });
+//       return;
+//     }
+
+//     // disable movement controls (safe-set)
+//     try {
+//       this.cameraEl.setAttribute('wasd-controls', 'enabled: false');
+//       this.cameraEl.setAttribute('look-controls', 'enabled: false');
+//     } catch (err) { /* ignore */ }
+
+//     this.currentIndex = 0;
+//     this._playStep(this.currentIndex);
+//     this.el.emit('tourstart', { index: this.currentIndex });
+//   },
+
+//   stop: function () {
+//     this.isPlaying = false;
+//     if (this._raf) cancelAnimationFrame(this._raf);
+//     this._raf = null;
+//     // restore controls (safe)
+//     try {
+//       if (this._savedControls && this._savedControls.wasd !== undefined) {
+//         this.cameraEl.setAttribute('wasd-controls', this._savedControls.wasd);
+//       } else {
+//         this.cameraEl.setAttribute('wasd-controls', 'enabled: true');
+//       }
+//       if (this._savedControls && this._savedControls.look !== undefined) {
+//         this.cameraEl.setAttribute('look-controls', this._savedControls.look);
+//       } else {
+//         this.cameraEl.setAttribute('look-controls', 'enabled: true');
+//       }
+//     } catch (err) { /* ignore */ }
+//     this.el.emit('tourstop', {});
+//   },
+
+//   pause: function () {
+//     if (!this.isPlaying) return;
+//     this.isPlaying = false;
+//     if (this._raf) cancelAnimationFrame(this._raf);
+//     this._raf = null;
+//     this._pausedElapsed = performance.now() - this._startTime;
+//     this.el.emit('tourpause', { index: this.currentIndex, elapsed: this._pausedElapsed });
+//   },
+
+//   resume: function () {
+//     if (this.isPlaying) return;
+//     if (!this._from || !this._to) return;
+//     const remaining = Math.max(0, this._duration - this._pausedElapsed);
+//     this._startInterpolation(performance.now(), remaining, this._from, this._to, this.currentIndex);
+//     this.el.emit('tourresume', { index: this.currentIndex });
+//   },
+
+//   next: function () {
+//     this._clearRaf();
+//     const nextIndex = (this.currentIndex + 1) % this.waypoints.length;
+//     if (!this.data.loop && nextIndex === 0 && this.currentIndex === this.waypoints.length - 1) {
+//       this.el.emit('tourend', {});
+//       this.stop();
+//       return;
+//     }
+//     this._playStep(nextIndex);
+//   },
+
+//   prev: function () {
+//     this._clearRaf();
+//     const prevIndex = (this.currentIndex - 1 + this.waypoints.length) % this.waypoints.length;
+//     this._playStep(prevIndex);
+//   },
+
+//   goTo: function (index) {
+//     if (index < 0 || index >= this.waypoints.length) return;
+//     this._clearRaf();
+//     this._playStep(index);
+//   },
+
+//   /* Internal helpers */
+//   _playStep: function (index) {
+//     this.currentIndex = index;
+//     const wp = this.waypoints[index];
+//     if (!wp) {
+//       console.warn('[camera-tour] waypoint missing for index', index);
+//       return;
+//     }
+
+//     // ensure camera.object3D available
+//     if (!this.cameraEl.object3D) {
+//       console.warn('[camera-tour] camera.object3D not available when trying to play step. Waiting...');
+//       this.cameraEl.addEventListener('object3dset', () => this._playStep(index), { once: true });
+//       return;
+//     }
+
+//     const obj = this.cameraEl.object3D;
+//     const fromPos = obj.position.clone();
+//     const fromQuat = obj.quaternion.clone();
+
+//     const toPos = new THREE.Vector3(wp.position.x, wp.position.y, wp.position.z);
+//     // convert degrees to radians Euler and then to quaternion (use MathUtils)
+//     const euler = new THREE.Euler(
+//       (THREE.MathUtils && THREE.MathUtils.degToRad ? THREE.MathUtils.degToRad(wp.rotation.x || 0) : (wp.rotation.x || 0) * Math.PI / 180),
+//       (THREE.MathUtils && THREE.MathUtils.degToRad ? THREE.MathUtils.degToRad(wp.rotation.y || 0) : (wp.rotation.y || 0) * Math.PI / 180),
+//       (THREE.MathUtils && THREE.MathUtils.degToRad ? THREE.MathUtils.degToRad(wp.rotation.z || 0) : (wp.rotation.z || 0) * Math.PI / 180),
+//       'XYZ'
+//     );
+//     const toQuat = new THREE.Quaternion().setFromEuler(euler);
+
+//     this._from = { pos: fromPos, quat: fromQuat };
+//     this._to = { pos: toPos, quat: toQuat };
+//     this._duration = wp.duration || this.data.defaultDuration;
+//     this._pausedElapsed = 0;
+
+//     this._startInterpolation(performance.now(), this._duration, this._from, this._to, index);
+//   },
+
+//   _startInterpolation: function (startTime, duration, from, to, index) {
+//     this.isPlaying = true;
+//     this._startTime = startTime;
+//     this._duration = duration;
+
+//     const animate = (now) => {
+//       const elapsed = now - this._startTime;
+//       let t = Math.min(1, elapsed / Math.max(1, this._duration));
+//       const eased = this._easeInOutCubic(t);
+
+//       // position lerp
+//       const currentPos = from.pos.clone().lerp(to.pos, eased);
+//       // rotation slerp
+//       const currentQuat = new THREE.Quaternion();
+//       THREE.Quaternion.slerp(from.quat, to.quat, currentQuat, eased);
+
+//       // apply to camera object3D
+//       try {
+//         this.cameraEl.object3D.position.copy(currentPos);
+//         this.cameraEl.object3D.quaternion.copy(currentQuat);
+//       } catch (err) {
+//         console.error('[camera-tour] failed to apply position/quaternion', err);
+//         this.stop();
+//         return;
+//       }
+
+//       this.el.emit('tourstep', { index, progress: t });
+
+//       if (t < 1 && this.isPlaying) {
+//         this._raf = requestAnimationFrame(animate);
+//       } else {
+//         // ensure final exact values
+//         try {
+//           this.cameraEl.object3D.position.copy(to.pos);
+//           this.cameraEl.object3D.quaternion.copy(to.quat);
+//         } catch (err) { /* ignore */ }
+
+//         this._raf = null;
+//         this.isPlaying = false;
+//         this.el.emit('tourarrive', { index });
+
+//         // next
+//         const nextIndex = index + 1;
+//         if (nextIndex < this.waypoints.length) {
+//           setTimeout(() => this._playStep(nextIndex), 50);
+//         } else if (this.data.loop) {
+//           setTimeout(() => this._playStep(0), 50);
+//         } else {
+//           this.el.emit('tourend', {});
+//           // restore controls
+//           try {
+//             if (this._savedControls && this._savedControls.wasd !== undefined) {
+//               this.cameraEl.setAttribute('wasd-controls', this._savedControls.wasd);
+//             } else {
+//               this.cameraEl.setAttribute('wasd-controls', 'enabled: true');
+//             }
+//             if (this._savedControls && this._savedControls.look !== undefined) {
+//               this.cameraEl.setAttribute('look-controls', this._savedControls.look);
+//             } else {
+//               this.cameraEl.setAttribute('look-controls', 'enabled: true');
+//             }
+//           } catch (err) { /* ignore */ }
+//         }
+//       }
+//     };
+
+//     this._raf = requestAnimationFrame(animate);
+//   },
+
+//   _clearRaf: function () {
+//     if (this._raf) {
+//       cancelAnimationFrame(this._raf);
+//       this._raf = null;
+//     }
+//     this.isPlaying = false;
+//   },
+
+//   _easeInOutCubic: function (t) {
+//     return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+//   }
+// });
+
 AFRAME.registerComponent("sala-libertadores", {
   init() {
     const el = this.el;
@@ -133,22 +557,62 @@ AFRAME.registerComponent("sala-libertadores", {
         <!-- Pedestal (mesa) -->
         <a-box position="0 1 0" width="1.5" height="1.5" depth="1.5" color="#333333"></a-box>
 
-        <!-- Vidro (transparent) -->
-        <a-box id="vidro-celebracao-2025"
+        <!-- Vidro -->
+        <a-box
           position="0 1.8 0"
           width="1.2"
-          height="2.4"
+          height="5"
           depth="1.2"
           color="#FFFFFF"
-          material="opacity: 0.12; transparent: true; metalness: 0.1; roughness: 0.3">
+          material="opacity: 0.15; transparent: true; metalness: 0.1; roughness: 0.3">
         </a-box>
 
         <!-- Troféu (começa abaixo do chão para subir) -->
+        <a-entity position="0 3 0" spot-real id="spot-real_um">
+          <a-cone
+            radius-bottom="3"
+            radius-top="0.05"
+            height="10"
+            position="0 0 1"
+            rotation="20 0 0"
+            transparent-no-depth
+            material="color: #ffffffff; opacity: 0.1; transparent: true; emissive: #ffffffff; emissiveIntensity: 0.1">
+          </a-cone>
+        </a-entity>
+        <a-entity position="0 3 0" spot-real id="spot-real_um">
+          <a-cone
+            radius-bottom="3"
+            radius-top="0.05"
+            height="10"
+            position="0 0 0"
+            rotation="0 0 0"
+            transparent-no-depth
+            material="color: #ffffffff; opacity: 0.1; transparent: true; emissive: #ffffffff; emissiveIntensity: 0.1">
+          </a-cone>
+        </a-entity>
+
+        <a-entity id="confete-no-trofeu"
+          position="0 1.5 0"
+          confetti-fall="count: 120; radius: 1; height: 2;">
+        </a-entity>
         <a-gltf-model id="trofeu-2025" src="#br-libertadores" position="0 -1 0" rotation="0 90 0" scale="0.06 0.06 0.06"></a-gltf-model>
+
+        <a-entity position="0 3 0" spot-real id="spot-real_dois">
+          <a-cone
+            radius-bottom="3"
+            radius-top="0.05"
+            height="10"
+            position="0 0 -1"
+            rotation="-20 0 0"
+            transparent-no-depth
+            material="color: #ffffffff; opacity: 0.1; transparent: true; emissive: #ffffffff; emissiveIntensity: 0.1">
+          </a-cone>
+        </a-entity>
 
         <!-- Plaquinha -->
         <a-plane id="placa-2025" position="-0.8 1.2 0" rotation="0 -90 0" width="1" height="0.50" color="#C00000"></a-plane>
         <a-text value="2025" position="-0.8 1.2 0" rotation="0 -90 0" align="center" width="4" color="#ffffffff"></a-text>
+        <a-text id="tetracampeao" value="TETRACAMPEAO" position="-0.8 10 0" rotation="0 -90 0" align="center" width="50" color="#C00000"></a-text>
       </a-entity>
 
     `;
@@ -275,7 +739,7 @@ AFRAME.registerComponent("sala-copadobrasil", {
         <!-- Quadro do ídolo (Maestro Júnior) -->
         <a-image
           src="hernane.jpg"
-          position="0 4 0"
+          position="-0.89 4 0"
           rotation="0 90 0"
           width="1.8"
           height="2.4">
@@ -314,7 +778,7 @@ AFRAME.registerComponent("sala-copadobrasil", {
         <!-- Quadro do ídolo (Bebeto) -->
         <a-image
           src="gabigol.jpg"
-          position="0 4 0"
+          position="0.89 4 0"
           rotation="0 -90 0"
           width="1.8"
           height="2.4">
@@ -714,217 +1178,63 @@ AFRAME.registerComponent("sala-brasileirao", {
   }
 });
 
-AFRAME.registerComponent('celebracao-2025', {
-  schema: {
-    autoStart: { type: 'boolean', default: true },
-    riseDur: { type: 'number', default: 6000 },
-    confettiCount: { type: 'number', default: 60 },
-    confettiDur: { type: 'number', default: 6000 },
-    sweepDur: { type: 'number', default: 3000 }
-  },
-
+AFRAME.registerComponent('celebracao-anim', {
   init: function () {
-    const el = this.el;
-    const data = this.data;
+    const area = this.el;
 
-    const trofeu = el.querySelector('#trofeu-2025');
-    const area = el.querySelector('#area-celebracao-2025');
-
-    if (!trofeu || !area) return;
-
-    // Limpa luzes antigas caso existam
-    function clearOldSpots() {
-      const old = area.querySelectorAll('.sky-spot');
-      old.forEach(o => o.parentNode.removeChild(o));
+    // 1) animação do troféu (subida + rotação contínua)
+    const trofeu = area.querySelector('#trofeu-2025');
+    if (trofeu) {
+      // subida (uma vez)
+      trofeu.setAttribute('animation__rise',
+        'property: position; from: 0 -1 0; to: 0 1.8 0; dur: 6000; easing: easeOutElastic;');
+      // rotação contínua (loop de 40s)
+      trofeu.setAttribute('animation__spin',
+        'property: rotation; to: 0 360 0; dur: 40000; loop: true; easing: linear;');
     }
 
-    // Cria um holofote NO TETO (Sky Spot)
-    function createSkySpot(opts) {
-      const {
-        pos = {x: 2, y: 6, z: 2}, // Posição alta (Teto)
-        lookAtPoint = {x: 0, y: 1.5, z: 0}, // Para onde ele aponta (o troféu)
-        color = '#ffffff',
-        intensity = 0.8,
-        sweepAxis = 'x', // Eixo que vai balançar ('x' ou 'z')
-        sweepAmp = 15,   // Amplitude do balanço em graus
-        dur = 3000
-      } = opts;
+    const spotligth_um = area.querySelector('#spot-real_um');
+    if (spotligth_um) {
+      // subida inicial
+      spotligth_um.setAttribute('animation__rise',
+        'property: position; from: 0 -1 0; to: 0 1.8 0; dur: 6000; easing: easeOutElastic;');
 
-      // 1. Container do Holofote (Fixo no teto)
-      const container = document.createElement('a-entity');
-      container.classList.add('sky-spot');
-      container.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
+      // vai e vem no eixo X (ou Y/Z) já em loop
+      spotligth_um.setAttribute('animation__wavex',
+        'property: position; from: -1 1.8 0; to: 1 1.8 0; dur: 4000; dir: alternate; loop: true; easing: easeInOutSine;');
 
-      // 2. Pivô de Rotação (Calculamos a rotação inicial para olhar pro troféu)
-      // Truque simples: Usamos look-at logic simplificada ou rotação manual.
-      // Vamos criar um 'wrapper' que aponta para o centro, e o filho anima.
-      const pivot = document.createElement('a-entity');
-      
-      // Matemática básica para apontar o objeto para o alvo (lookAt manual simples)
-      // Como estamos no A-Frame, vamos configurar o pivot para olhar para o alvo.
-      // Mas para facilitar a animação, vamos configurar a rotação base manualmente:
-      // Se estou na direita (X+), giro Z para esquerda. Se estou na frente (Z+), giro X para trás.
-      
-      // Configuração visual do feixe
-      const coneHeight = 8; // Feixe bem longo saindo do teto
-      
-      // Cria a luz
-      const light = document.createElement('a-entity');
-      light.setAttribute('light', `type: spot; color: ${color}; intensity: ${intensity}; angle: 18; penumbra: 0.5; castShadow: false; distance: 15`);
-      
-      // Cria o cone visível (feixe)
-      const cone = document.createElement('a-entity');
-      cone.setAttribute('geometry', `primitive: cone; radiusTop: 0.1; radiusBottom: 1.5; height: ${coneHeight}; segmentsRadial: 32`);
-      cone.setAttribute('material', `color: ${color}; transparent: true; opacity: 0.12; shader: flat; side: double; depthWrite: false`);
-      // O cone nativo aponta pra Y+, giramos -90 no X para apontar pra baixo/frente junto com o spot
-      cone.setAttribute('rotation', '-90 0 0');
-      cone.setAttribute('position', `0 0 -${coneHeight/2}`); // Empurra pra frente pra ponta sair da origem
-
-      // Adiciona luz e cone ao pivô
-      pivot.appendChild(light);
-      pivot.appendChild(cone);
-
-      // --- APONTAR PARA O TROFÉU ---
-      // Para simplificar, usamos o 'look-at' nativo do A-Frame via atributo se disponível, 
-      // ou setamos a rotação inicial do container para olhar para 0,1.5,0.
-      container.setAttribute('look-at', `${lookAtPoint.x} ${lookAtPoint.y} ${lookAtPoint.z}`);
-      // Nota: Se não tiver o componente look-at externo, o container ficaria reto.
-      // Assumindo sem bibliotecas externas, vamos forçar uma rotação aproximada baseada na posição:
-      // (Isso é um fallback manual para garantir que funcione sem imports extras)
-      const dx = lookAtPoint.x - pos.x;
-      const dy = lookAtPoint.y - pos.y;
-      const dz = lookAtPoint.z - pos.z;
-      const rotY = Math.atan2(dx, dz) * (180/Math.PI); 
-      const distH = Math.sqrt(dx*dx + dz*dz);
-      const rotX = Math.atan2(distH, dy) * (180/Math.PI) - 180; // Ajuste para apontar pra baixo
-      
-      // Aplicamos a rotação estática no Container para ele "Mirar" no troféu
-      container.setAttribute('rotation', `${-rotX} ${rotY + 180} 0`); // Ajuste empírico padrão A-Frame
-
-      // --- ANIMAÇÃO DE SWEEP (VAI E VEM) ---
-      // Animamos o PIVÔ, que é filho do container já rotacionado.
-      // Assim o "vai e vem" é relativo à mira.
-      const axis = sweepAxis === 'x' ? 'rotation.x' : 'rotation.y'; 
-      // Se o container já olha pro troféu, balançar em X faz o feixe subir/descer, em Y faz esquerda/direita.
-      
-      // Vamos balançar levemente em Y (esquerda/direita relativo ao feixe)
-      pivot.setAttribute('animation__sweep', {
-        property: 'rotation',
-        from: `0 -${sweepAmp} 0`,
-        to: `0 ${sweepAmp} 0`,
-        dur: dur,
-        dir: 'alternate',
-        loop: true,
-        easing: 'easeInOutSine'
-      });
-
-      // Animação de pulso
-      light.setAttribute('animation__pulse', {
-        property: 'light.intensity',
-        from: intensity * 0.7,
-        to: intensity * 1.3,
-        dur: dur * 0.3,
-        dir: 'alternate',
-        loop: true,
-        easing: 'linear'
-      });
-
-      container.appendChild(pivot);
-      area.appendChild(container); // Anexa à área (fixo no mundo), não ao troféu
+      // rotação contínua
+      spotligth_um.setAttribute('animation__spin',
+        'property: rotation; to: 0 360 0; dur: 40000; loop: true; easing: linear;');
     }
 
-    const executarCelebracao = () => {
-      // 1. Sobe o Troféu (mantido)
-      const posAtual = trofeu.getAttribute('position') || {x:0, y:-1, z:0};
-      trofeu.removeAttribute('animation__rise');
-      trofeu.setAttribute('animation__rise', {
-        property: 'position',
-        to: `${posAtual.x || 0} 1.8 ${posAtual.z || 0}`,
-        dur: data.riseDur,
-        easing: 'easeOutQuart',
-        loop: false
-      });
+    const spotligth_dois = area.querySelector('#spot-real_dois');
+    if (spotligth_dois) {
+      // subida inicial
+      spotligth_dois.setAttribute('animation__rise',
+        'property: position; from: 0 -1 0; to: 0 1.8 0; dur: 6000; easing: easeOutElastic;');
 
-      // Pulso do troféu
-      trofeu.removeAttribute('animation__beat');
-      trofeu.setAttribute('animation__beat', {
-        property: 'scale',
-        from: '0.06 0.06 0.06',
-        to: '0.065 0.065 0.065',
-        dur: 500,
-        dir: 'alternate',
-        loop: true,
-        easing: 'easeInOutSine'
-      });
+      // vai e vem no eixo X (ou Y/Z) já em loop
+      spotligth_dois.setAttribute('animation__wavex',
+        'property: position; from: -1 1.8 0; to: 1 1.8 0; dur: 4000; dir: alternate; loop: true; easing: easeInOutSine;');
 
-      // 2. Luzes do Céu
-      clearOldSpots();
-
-      // Luz Esquerda (Vermelha)
-      createSkySpot({
-        pos: {x: -3, y: 7, z: 2},
-        color: '#ff0000',
-        intensity: 1.5,
-        sweepAmp: 10,
-        dur: 2500
-      });
-
-      // Luz Direita (Branca)
-      createSkySpot({
-        pos: {x: 3, y: 7, z: 2},
-        color: '#ffffff',
-        intensity: 1.2,
-        sweepAmp: 10,
-        dur: 3000
-      });
-
-      // Luz Central Traseira (Dourada/Amarela - Contraluz)
-      createSkySpot({
-        pos: {x: 0, y: 6, z: -3},
-        color: '#ffcc00',
-        intensity: 1.0,
-        sweepAmp: 20,
-        dur: 4000
-      });
-
-      // 3. Confetes
-      spawnConfetti(area, trofeu, data.confettiCount, data.confettiDur);
-    };
-
-    if (data.autoStart) setTimeout(executarCelebracao, 1000);
-
-    trofeu.classList.add('clickable');
-    trofeu.addEventListener('click', () => {
-      trofeu.setAttribute('position', {x: 0, y: -1, z: 0});
-      setTimeout(executarCelebracao, 100);
-    });
-
-    // Função de confetes (Compacta)
-    function spawnConfetti(parent, centerRef, count, dur) {
-        for (let i = 0; i < count; i++) {
-         const p = document.createElement('a-plane');
-         const colors = ['#C00000', '#000000', '#FFFFFF'];
-         const color = colors[Math.floor(Math.random() * colors.length)];
-         const x = (Math.random() - 0.5) * 5;
-         const z = (Math.random() - 0.5) * 5;
-         const y = 5; 
-         p.setAttribute('position', `${x} ${y} ${z}`);
-         p.setAttribute('material', `color: ${color}; side:double; transparent:true`);
-         p.setAttribute('width', '0.06'); p.setAttribute('height', '0.03');
-         p.setAttribute('animation__fall', {
-             property: 'position', to: `${x + (Math.random()-0.5)} 0 ${z + (Math.random()-0.5)}`,
-             dur: dur + Math.random()*2000, easing: 'linear'
-         });
-         p.setAttribute('animation__spin', {
-             property: 'rotation', to: `${Math.random()*360} ${Math.random()*360} 0`,
-             dur: 2000, loop: true, easing: 'linear'
-         });
-         parent.appendChild(p);
-         setTimeout(() => { if(p.parentNode) p.parentNode.removeChild(p) }, dur + 3000);
-        }
+      // rotação contínua
+      spotligth_dois.setAttribute('animation__spin',
+        'property: rotation; to: 0 360 0; dur: 40000; loop: true; easing: linear;');
     }
+
+    const tetracampeao = area.querySelector('#tetracampeao');
+    if (tetracampeao) {
+      tetracampeao.setAttribute('animation__pulse', `
+    property: scale;
+    dir: alternate;
+    from: 1 1 1;
+    to: 1.3 1.3 1.3;
+    dur: 800;
+    loop: true;
+    easing: easeInOutQuad;
+  `);
+    }
+
   }
 });
-
-
-
